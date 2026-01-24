@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Orb Runner.io</title>
+    <style>
+        /* --- CSS : Style et Mise en page --- */
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+        :root {
+            --primary-color: #00f3ff;
+            --danger-color: #ff0055;
+            --bonus-color: #00ff88;
+            --magnet-color: #ffe600;
+            --ui-bg: rgba(10, 10, 20, 0.85);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Orbitron', sans-serif;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Interface Utilisateur (UI) */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Laisse passer les clics vers le canvas quand on joue */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .interactive {
+            pointer-events: auto;
+        }
+
+        /* Écrans (Start, Game Over) */
+        .screen {
+            background: var(--ui-bg);
+            padding: 2rem;
+            border-radius: 20px;
+            border: 2px solid var(--primary-color);
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
+            backdrop-filter: blur(5px);
+            max-width: 400px;
+            width: 90%;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5rem;
+            text-transform: uppercase;
+            background: linear-gradient(90deg, #fff, var(--primary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 10px var(--primary-color);
+        }
+
+        p {
+            font-size: 0.9rem;
+            color: #ccc;
+            line-height: 1.5;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, var(--primary-color), #00a8ff);
+            border: none;
+            padding: 12px 30px;
+            color: #000;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.1s, box-shadow 0.2s;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--primary-color);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Sélecteur de Skin */
+        .skin-selector {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .skin-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.2s;
+        }
+        .skin-option.selected {
+            border-color: white;
+            transform: scale(1.2);
+            box-shadow: 0 0 10px white;
+        }
+
+        /* HUD (En jeu) */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            text-shadow: 0 0 5px black;
+        }
+
+        .hud-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .score-display {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .high-score {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .bonus-indicators {
+            display: flex;
+            gap: 10px;
+        }
+
+        .bonus-icon {
+            font-size: 1.5rem;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .bonus-icon.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Instructions */
+        .keys-hint {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Canvas du Jeu -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Overlay -->
+    <div id="ui" class="ui-layer">
+        
+        <!-- HUD (Visible pendant le jeu) -->
+        <div id="hud" class="hidden">
+            <div class="hud-group">
+                <div class="score-display">Score: <span id="scoreVal">0</span></div>
+                <div class="high-score">Record: <span id="highScoreVal">0</span></div>
+            </div>
+            <div class="bonus-indicators">
+                <div id="iconShield" class="bonus-icon" title="Bouclier">🛡️</div>
+                <div id="iconMagnet" class="bonus-icon" title="Aimant">🧲</div>
+                <div id="iconSpeed" class="bonus-icon" title="Vitesse">⚡</div>
+            </div>
+        </div>
+
+        <!-- Écran de Démarrage -->
+        <div id="startScreen" class="screen interactive">
+            <h1>Orb Runner.io</h1>
+            <p>Survivez dans l'arène infinie. Collectez les orbes. Évitez les obstacles.</p>
+            
+            <p>Choisissez votre vaisseau :</p>
+            <div class="skin-selector" id="skinSelector">
+                <!-- Généré par JS -->
+            </div>
+
+            <button class="btn" id="startBtn">JOUER</button>
+            <div class="keys-hint">Souris ou Toucher pour bouger</div>
+        </div>
+
+        <!-- Écran Game Over -->
+        <div id="gameOverScreen" class="screen interactive hidden">
+            <h1 style="color: var(--danger-color); text-shadow: 0 0 10px var(--danger-color);">Game Over</h1>
+            <p>Score Final : <span id="finalScore" style="color:white; font-weight:bold;">0</span></p>
+            <p>Meilleur Score : <span id="finalHighScore">0</span></p>
+            <button class="btn" id="restartBtn">REJOUER</button>
+        </div>
+
+    </div>
+
+    <script>
+        /**
+         * Logique du Jeu Orb Runner.io
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Éléments UI
+        const ui = {
+            start: document.getElementById('startScreen'),
+            gameOver: document.getElementById('gameOverScreen'),
+            hud: document.getElementById('hud'),
+            score: document.getElementById('scoreVal'),
+            highScore: document.getElementById('highScoreVal'),
+            finalScore: document.getElementById('finalScore'),
+            finalHighScore: document.getElementById('finalHighScore'),
+            icons: {
+                shield: document.getElementById('iconShield'),
+                magnet: document.getElementById('iconMagnet'),
+                speed: document.getElementById('iconSpeed')
+            },
+            skinSelector: document.getElementById('skinSelector')
+        };
+
+        // Configuration du Jeu
+        const config = {
+            baseSpeed: 4,
+            playerRadius: 15,
+            orbRadius: 8,
+            spawnRate: 60, // Frames entre spawns (diminue avec le temps)
+            colors: {
+                player: ['#00f3ff', '#ff0055', '#ffe600', '#00ff88', '#aa00ff'],
+                orb: '#ffffff',
+                obstacle: '#ff3333',
+                shield: '#00a8ff',
+                magnet: '#ccff00',
+                speed: '#ff5500'
+            }
+        };
+
+        // État Global
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let score = 0;
+        let highScore = localStorage.getItem('orbRunnerHighScore') || 0;
+        let frames = 0;
+        let difficultyMultiplier = 1;
+        let playerSkinIndex = 0;
+
+        // Entrées (Souris/Tactile)
+        const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+        // Entités
+        let player;
+        let orbs = [];
+        let obstacles = [];
+        let particles = [];
+        let bonuses = [];
+
+        // --- Initialisation ---
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Gestion des entrées
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Initialisation Sélecteur de Skin
+        config.colors.player.forEach((color, index) => {
+            const el = document.createElement('div');
+            el.className = `skin-option ${index === 0 ? 'selected' : ''}`;
+            el.style.backgroundColor = color;
+            el.style.boxShadow = `0 0 10px ${color}`;
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.skin-option').forEach(opt => opt.classList.remove('selected'));
+                el.classList.add('selected');
+                playerSkinIndex = index;
+            });
+            ui.skinSelector.appendChild(el);
+        });
+
+        ui.highScore.innerText = highScore;
+
+        // --- Classes du Jeu ---
+
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.radius = config.playerRadius;
+                this.color = config.colors.player[playerSkinIndex];
+                this.angle = 0; // Pour l'animation de rotation
+                
+                // Stats
+                this.baseSpeed = config.baseSpeed;
+                this.speed = this.baseSpeed;
+                
+                // Bonus
+                this.shield = false;
+                this.magnet = false;
+                this.magnetRadius = 150;
+                this.speedBoost = false;
+            }
+
+            update() {
+                // Calcul du mouvement vers la souris
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Normalisation et vitesse
+                if (distance > 1) {
+                    const moveSpeed = this.speedBoost ? this.speed * 1.8 : this.speed;
+                    this.x += (dx / distance) * moveSpeed;
+                    this.y += (dy / distance) * moveSpeed;
+                }
+
+                // Animation de rotation (texture procédurale)
+                this.angle += 0.05 + (this.speedBoost ? 0.1 : 0);
+                
+                // Effet visuel de l'aimant
+                if (this.magnet) {
+                    this.magnetRadius = 150 + Math.sin(frames * 0.1) * 10;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                // Effet Aimant (Cercle pulsant)
+                if (this.magnet) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.magnetRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(204, 255, 0, 0.2)`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Effet Bouclier
+                if (this.shield) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius + 8, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(0, 168, 255, ${0.3 + Math.sin(frames * 0.2) * 0.2})`;
+                    ctx.fill();
+                    ctx.strokeStyle = config.colors.shield;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Rotation interne pour la texture animée
+                ctx.rotate(this.angle);
+
+                // Dessin du "Vaisseau"
+                ctx.beginPath();
+                // Corps principal
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // Texture animée (anneaux internes)
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.7, 0, Math.PI * 1.5);
+                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Detail central
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Lueur
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                
+                ctx.restore();
+            }
+        }
+
+        class Orb {
+            constructor(x, y) {
+                this.x = x || Math.random() * canvas.width;
+                this.y = y || Math.random() * canvas.height;
+                this.radius = config.orbRadius;
+                this.color = config.colors.orb;
+                this.floatOffset = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                // Animation de flottement
+                this.y += Math.sin(frames * 0.05 + this.floatOffset) * 0.2;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Obstacle {
+            constructor() {
+                // Spawn sur les bords
+                if (Math.random() < 0.5) {
+                    this.x = Math.random() < 0.5 ? -50 : canvas.width + 50;
+                    this.y = Math.random() * canvas.height;
+                } else {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() < 0.5 ? -50 : canvas.height + 50;
+                }
+
+                // Type : 0 = Carré (Mur), 1 = Triangle (Pic)
+                this.type = Math.random() < 0.7 ? 'square' : 'triangle';
+                this.radius = this.type === 'square' ? 20 + Math.random() * 20 : 25;
+                
+                // Vitesse de déplacement (direction aléatoire mais vers l'intérieur globalement)
+                const angle = Math.atan2(canvas.height/2 - this.y, canvas.width/2 - this.x) + (Math.random() - 0.5);
+                const speed = (2 + Math.random() * 3) * difficultyMultiplier;
+                
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                ctx.fillStyle = '#333';
+                ctx.strokeStyle = config.colors.obstacle;
+                ctx.lineWidth = 3;
+
+                if (this.type === 'square') {
+                    ctx.fillRect(-this.radius, -this.radius, this.radius*2, this.radius*2);
+                    ctx.strokeRect(-this.radius, -this.radius, this.radius*2, this.radius*2);
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.radius);
+                    ctx.lineTo(this.radius, this.radius);
+                    ctx.lineTo(-this.radius, this.radius);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            isOffScreen() {
+                return (this.x < -100 || this.x > canvas.width + 100 || 
+                        this.y < -100 || this.y > canvas.height + 100);
+            }
+        }
+
+        class Bonus {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                // Types: 'shield', 'magnet', 'speed'
+                const rand = Math.random();
+                if (rand < 0.33) this.type = 'shield';
+                else if (rand < 0.66) this.type = 'magnet';
+                else this.type = 'speed';
+
+                this.radius = 12;
+                this.life = 600; // Disparaît après un moment
+            }
+
+            update() {
+                this.life--;
+            }
+
+            draw() {
+                let color, symbol;
+                if (this.type === 'shield') { color = config.colors.shield; symbol = '🛡️'; }
+                else if (this.type === 'magnet') { color = config.colors.magnet; symbol = '🧲'; }
+                else { color = config.colors.speed; symbol = '⚡'; }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                ctx.fillStyle = color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = '#000';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(symbol, this.x, this.y);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 3 + 1;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.alpha = 1;
+                this.decay = 0.02 + Math.random() * 0.03;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // --- Fonctions du Moteur de Jeu ---
+
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function resetGame() {
+            player = new Player();
+            orbs = [];
+            obstacles = [];
+            bonuses = [];
+            particles = [];
+            score = 0;
+            frames = 0;
+            difficultyMultiplier = 1;
+            
+            // Spawn orbes initiaux
+            for(let i=0; i<20; i++) orbs.push(new Orb());
+
+            ui.score.innerText = '0';
+            ui.hud.classList.remove('hidden');
+            ui.start.classList.add('hidden');
+            ui.gameOver.classList.add('hidden');
+            
+            gameState = 'PLAYING';
+            animate();
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            ui.hud.classList.add('hidden');
+            ui.gameOver.classList.remove('hidden');
+            ui.finalScore.innerText = score;
+            
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('orbRunnerHighScore', highScore);
+                ui.finalHighScore.innerText = highScore + " (Nouveau !)";
+            } else {
+                ui.finalHighScore.innerText = highScore;
+            }
+            
+            // Effet explosion sur le joueur
+            createParticles(player.x, player.y, player.color, 50);
+            createParticles(player.x, player.y, '#fff', 20);
+        }
+
+        function updateDifficulty() {
+            // Augmente la difficulté toutes les 10 secondes (environ 600 frames)
+            if (frames % 600 === 0) {
+                difficultyMultiplier += 0.1;
+            }
+        }
+
+        function checkCollisions() {
+            // Joueur vs Orbes
+            for (let i = orbs.length - 1; i >= 0; i--) {
+                const orb = orbs[i];
+                const dx = player.x - orb.x;
+                const dy = player.y - orb.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Aimant
+                if (player.magnet && dist < player.magnetRadius) {
+                    orb.x += dx * 0.1;
+                    orb.y += dy * 0.1;
+                }
+
+                if (dist < player.radius + orb.radius) {
+                    // Collecté
+                    score += 10;
+                    ui.score.innerText = score;
+                    createParticles(orb.x, orb.y, config.colors.orb, 5);
+                    orbs.splice(i, 1);
+                    
+                    // Spawn remplacement
+                    if (Math.random() < 0.1) {
+                        bonuses.push(new Bonus(Math.random() * canvas.width, Math.random() * canvas.height));
+                    } else {
+                        orbs.push(new Orb());
+                    }
+                }
+            }
+
+            // Joueur vs Bonus
+            for (let i = bonuses.length - 1; i >= 0; i--) {
+                const b = bonuses[i];
+                const dx = player.x - b.x;
+                const dy = player.y - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < player.radius + b.radius) {
+                    // Activer Bonus
+                    createParticles(b.x, b.y, '#fff', 10);
+                    
+                    if (b.type === 'shield') {
+                        player.shield = true;
+                        ui.icons.shield.classList.add('active');
+                        setTimeout(() => { player.shield = false; ui.icons.shield.classList.remove('active'); }, 5000);
+                    } else if (b.type === 'magnet') {
+                        player.magnet = true;
+                        ui.icons.magnet.classList.add('active');
+                        setTimeout(() => { player.magnet = false; ui.icons.magnet.classList.remove('active'); }, 8000);
+                    } else if (b.type === 'speed') {
+                        player.speedBoost = true;
+                        ui.icons.speed.classList.add('active');
+                        setTimeout(() => { player.speedBoost = false; ui.icons.speed.classList.remove('active'); }, 4000);
+                    }
+                    
+                    bonuses.splice(i, 1);
+                } else if (b.life <= 0) {
+                    bonuses.splice(i, 1);
+                }
+            }
+
+            // Joueur vs Obstacles
+            for (let obs of obstacles) {
+                const dx = player.x - obs.x;
+                const dy = player.y - obs.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Collision simple cercle vs cercle (approximation pour le carré/triangle)
+                if (dist < player.radius + obs.radius) {
+                    if (player.shield) {
+                        player.shield = false;
+                        ui.icons.shield.classList.remove('active');
+                        createParticles(player.x, player.y, config.colors.shield, 20);
+                        // Repousser l'obstacle un peu pour éviter double hit immédiat
+                        obs.vx *= -1; 
+                        obs.vy *= -1;
+                    } else {
+                        gameOver();
+                    }
+                }
+            }
+        }
+
+        function drawBackground() {
+            // Fond dégradé sombre
+            const gradient = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#000000');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grille subtile qui défile légèrement pour effet de profondeur
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            const offsetX = -player.x * 0.1 % gridSize;
+            const offsetY = -player.y * 0.1 % gridSize;
+
+            ctx.beginPath();
+            for (let x = offsetX; x < canvas.width; x += gridSize) {
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+            }
+            for (let y = offsetY; y < canvas.height; y += gridSize) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+            }
+            ctx.stroke();
+        }
+
+        // --- Boucle Principale ---
+
+        function animate() {
+            if (gameState !== 'PLAYING') return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            frames++;
+            updateDifficulty();
+
+            drawBackground();
+
+            // Spawn des obstacles
+            // Le taux de spawn diminue (devient plus rapide) avec la difficulté
+            const currentSpawnRate = Math.max(20, config.spawnRate - (difficultyMultiplier * 5));
+            if (frames % Math.floor(currentSpawnRate) === 0) {
+                obstacles.push(new Obstacle());
+            }
+
+            // Mises à jour et Dessins
+            
+            // Particules
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+
+            // Bonus
+            bonuses.forEach(b => { b.update(); b.draw(); });
+
+            // Orbes
+            orbs.forEach(orb => { orb.update(); orb.draw(); });
+
+            // Obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].update();
+                obstacles[i].draw();
+                if (obstacles[i].isOffScreen()) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Player
+            player.update();
+            player.draw();
+
+            checkCollisions();
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- Écouteurs de Boutons ---
+        document.getElementById('startBtn').addEventListener('click', resetGame);
+        document.getElementById('restartBtn').addEventListener('click', resetGame);
+
+        // Rendu initial pour le fond avant le start
+        drawBackground();
+
+    </script>
+</body>
+</html>
